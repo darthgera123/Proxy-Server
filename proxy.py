@@ -2,10 +2,29 @@ import socket
 import os
 import threading
 import sys
+import struct
 
 PROXY_PORT = 20100
 MAX_CONN = 10
 BUFFER_SIZE = 100000000
+blocked_cidr = []
+blocked_ips = []
+file_obj = open("blacklist.txt","r")
+auth_obj = open("username:password.txt","r")
+
+
+def cidr_to_ips():
+	for i in range(len(blocked_cidr)):
+		(ip, cidr) = blocked_cidr[i].split('/')
+		cidr = int(cidr) 
+		host_bits = 32 - cidr
+		i = struct.unpack('>I', socket.inet_aton(ip))[0] 
+		start = (i >> host_bits) << host_bits 
+		end = start | ((1 << host_bits))
+		end += 1
+		for i in range(start, end):
+		    tp_ip = socket.inet_ntoa(struct.pack('>I',i))
+		    blocked_ips.append(tp_ip)
 
 def handle_parsing(client_socket, c_addr, data):
 	tdata = data	
@@ -41,9 +60,15 @@ def handle_parsing(client_socket, c_addr, data):
 	else: # specific port 
 	    port = int((temp[(port_pos+1):])[:webserver_pos-port_pos-1])
 	    webserver = temp[:port_pos] 	
+	
+	# Check if current IP is blocked
 
-	# print(webserver)
-	# print(port)
+	ip_to_check = socket.gethostbyname(webserver)
+	if ip_to_check in blocked_ips:
+		client_socket.send("Page Blocked")
+		sys.exit()    
+	
+
 	s = socket.socket(socket.AF_INET, socket.SOCK_STREAM) 
 	s.settimeout(60)
 	try:
@@ -71,9 +96,7 @@ def initiate_server():
 	proxy_socket.listen(MAX_CONN)
 	proxy_ip = proxy_socket.getsockname()[0]
 	print ("Proxy server running on ip address " + str(proxy_ip) + " and port number = " + str(proxy_socket.getsockname()[1]))
-	
-
-
+	print
     # Listening and Accepting requests
 	while 1:
 		try:
@@ -85,6 +108,11 @@ def initiate_server():
 		except KeyboardInterrupt:
 			proxy_socket.close()
 			sys.exit()
+
+blocked_cidr = file_obj.readlines();
+for i in range(len(blocked_cidr)):
+	blocked_cidr[i] = blocked_cidr[i][:-1]
+cidr_to_ips()
 
 initiate_server()
 
