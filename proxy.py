@@ -3,12 +3,14 @@ import os
 import threading
 import sys
 import struct
+import base64
 
 PROXY_PORT = 20100
 MAX_CONN = 10
 BUFFER_SIZE = 100000000
 blocked_cidr = []
 blocked_ips = []
+vip = []
 file_obj = open("blacklist.txt","r")
 auth_obj = open("username:password.txt","r")
 
@@ -29,7 +31,15 @@ def cidr_to_ips():
 def handle_parsing(client_socket, c_addr, data):
 	tdata = data	
 	data = str(data)
+	print(data)
 	fline = data.split('\n')[0]
+	try:
+		sline = data.split('\n')[2]
+		idx = sline.find("Basic")
+		hashed_val = sline[idx:].split(' ')[1][:-1]
+	except:
+		hashed_val = ''
+	
 	try:
 		url = fline.split(' ')[1]
 	except:
@@ -65,8 +75,11 @@ def handle_parsing(client_socket, c_addr, data):
 
 	ip_to_check = socket.gethostbyname(webserver)
 	if ip_to_check in blocked_ips:
-		client_socket.send("Page Blocked")
-		sys.exit()    
+		print(hashed_val)
+		if not hashed_val in vip:
+			print("\nCurrent user is NOT AUTHENTICATED to access this")
+			client_socket.send(str.encode("Current user is not authenticated to access this"))
+			sys.exit()    
 	
 
 	s = socket.socket(socket.AF_INET, socket.SOCK_STREAM) 
@@ -109,11 +122,19 @@ def initiate_server():
 			proxy_socket.close()
 			sys.exit()
 
-blocked_cidr = file_obj.readlines();
+blocked_cidr = file_obj.readlines()
+admins = auth_obj.readlines()
 for i in range(len(blocked_cidr)):
 	blocked_cidr[i] = blocked_cidr[i][:-1]
 cidr_to_ips()
 
+for i in range(len(admins)):
+	admins[i] = admins[i][:-1]
+
+for admin in admins:
+	vip.append(base64.b64encode(admin))
+
+print(vip)
 initiate_server()
 
 
